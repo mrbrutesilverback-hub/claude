@@ -54,3 +54,19 @@ le plugin sur les mêmes photos, il **ajoute** un masque de plus.
 - Les taches très marquées (scotch au sol, traces orange) peuvent rester visibles : finis-les
   à l'outil **Supprimer** avec l'IA générative.
 - Si le masque déborde sur les cheveux bouclés, retouche-le à la main (**Soustraire → Sujet**).
+
+---
+
+# Version Lightroom (cloud, sans « Classic ») : presets adaptatifs
+
+Lightroom (sans « Classic ») n'accepte pas les plugins. Le dossier `presets/` contient deux presets
+adaptatifs qui recalculent le masque « Arrière-plan » sur chaque photo :
+
+- **Fond lisse** : un masque avec les réglages ci-dessus.
+- **Fond lisse (fort)** : deux masques empilés (effet doublé).
+
+**Importer :** Retouche → Paramètres prédéfinis → « … » → Importer des paramètres prédéfinis,
+puis choisis le zip ou les fichiers `.xmp`.
+
+**Appliquer à tout :** sélectionne toutes les photos (Cmd/Ctrl + A), puis clique sur le preset
+dans le groupe « Nettoyage Fond ».
