@@ -1,0 +1,24 @@
+NETTOYAGE FOND — nettoie le mur et le sol derrière le sujet, façon Evoto
+=========================================================================
+
+Enlève les taches, les traces sur la plinthe et le scotch au sol, en gardant la couleur du fond,
+les dégradés de lumière, le grain et la netteté du sujet (cheveux compris).
+Les photos d'origine ne sont jamais modifiées : les résultats vont dans un sous-dossier « Nettoyé ».
+
+1) EXPORTER DEPUIS LIGHTROOM
+   - Fais tes retouches habituelles (couleurs, expo...) SANS le preset « Fond lisse ».
+   - Sélectionne toutes les photos (Cmd+A) → icône Partager (carré avec flèche) → Exporter.
+   - Format JPG, taille « Taille réelle », qualité 100 → choisis un dossier.
+
+2) NETTOYER
+   - Double-clique sur « Nettoyer les photos.command ».
+   - Si macOS bloque l'ouverture : Réglages Système → Confidentialité et sécurité →
+     tout en bas « Ouvrir quand même », puis re-double-clique.
+   - La première fois, il installe les outils (5 à 10 min, connexion internet nécessaire).
+   - Choisis le dossier des photos exportées. Compte environ 10 secondes par photo.
+   - Le dossier « Nettoyé » s'ouvre tout seul à la fin.
+
+RÉGLAGES (pour les curieux, dans le Terminal)
+   python nettoyage_fond.py DOSSIER --force 2      → fond encore plus lisse
+   python nettoyage_fond.py DOSSIER --force 0.6    → lissage plus léger
+   python nettoyage_fond.py DOSSIER --marge 1      → protège une zone plus large autour des cheveux
