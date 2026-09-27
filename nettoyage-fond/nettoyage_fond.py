@@ -41,7 +41,63 @@ def subject_alpha(image_rgb8, session):
     from rembg import remove
 
     mask = remove(Image.fromarray(image_rgb8), session=session, only_mask=True)
-    return np.asarray(mask, dtype=np.float32) / 255.0
+    return drop_islands(np.asarray(mask, dtype=np.float32) / 255.0)
+
+
+def drop_islands(alpha):
+    """Retire les petits îlots isolés du masque (l'IA prend parfois une tache pour le sujet)."""
+    solid = (alpha > 0.5).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(solid, connectivity=8)
+    if count <= 1:
+        return alpha
+    min_area = 0.002 * alpha.size
+    big = np.zeros(count, bool)
+    big[1:] = stats[1:, cv2.CC_STAT_AREA] >= min_area
+    if not big.any():
+        big[1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))] = True
+    r = max(3, int(max(alpha.shape) / 150))
+    zone = cv2.dilate(big[labels].astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2))
+    return alpha * zone
+
+
+def stain_mask(img, plate, alpha, long_side):
+    """Taches du fond (0..1, adouci) : zones qui s'écartent de la plaque propre, hors sujet.
+
+    Les cheveux et les ombres collés au sujet sont gardés.
+    """
+    low = gaussian(img, max(1.5, long_side / 1500))
+    dev = np.abs(low - plate).max(axis=2)
+    bg = alpha < 0.02
+    if not bg.any():
+        return np.zeros_like(alpha)
+    thr = max(0.008, 2.5 * float(np.median(dev[bg])))
+    raw = ((dev > thr) & bg).astype(np.uint8)
+
+    raw = cv2.morphologyEx(raw, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))  # enlève le bruit isolé
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(raw, connectivity=8)
+    if count <= 1:
+        return np.zeros_like(alpha)
+    near = max(3, int(long_side / 400))
+    subject = cv2.dilate((alpha > 0.3).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * near + 1,) * 2))
+    touching = np.zeros(count, bool)
+    touching[np.unique(labels[(subject > 0) & (raw > 0)])] = True
+
+    # Parmi les zones collées au sujet, on efface quand même les petites taches épaisses :
+    # les mèches de cheveux sont trop fines pour survivre à l'ouverture, les ombres trop grandes.
+    k = max(3, int(long_side / 700) | 1)
+    thick = cv2.morphologyEx(raw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    is_thick = np.zeros(count, bool)
+    is_thick[np.unique(labels[thick > 0])] = True
+    small = stats[:, cv2.CC_STAT_AREA] < (long_side / 40) ** 2
+
+    remove = ~touching | (small & is_thick)
+    remove[0] = False
+    stains = remove[labels].astype(np.uint8)
+
+    grow = max(3, int(long_side / 300))
+    stains = cv2.dilate(stains, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * grow + 1,) * 2))
+    return np.clip(gaussian(stains.astype(np.float32), grow * 0.5), 0.0, 1.0)
 
 
 def clean_background(img, alpha, force=1.0, protect=0.5):
@@ -70,18 +126,23 @@ def clean_background(img, alpha, force=1.0, protect=0.5):
 
     plate = cv2.resize(plate, (w, h), interpolation=cv2.INTER_CUBIC)
 
-    # --- Grain fin d'origine, écrêté pour ne pas ramener les bords des taches ---
+    # --- Détection des taches en pleine résolution ---
+    stains = stain_mask(img, plate, alpha, long_side)
+
+    # --- Grain fin d'origine, écrêté, et retiré sur les taches pour ne pas les faire revenir ---
     grain_sigma = max(1.0, long_side / 3000)
     detail = img - gaussian(img, grain_sigma)
     bg = alpha < 0.05
     ref = np.abs(detail[bg]) if bg.any() else np.abs(detail)
     limit = 3.0 * float(np.median(ref)) + 1e-4
-    plate = plate + np.clip(detail, -limit, limit)
+    plate = plate + np.clip(detail, -limit, limit) * (1.0 - stains[..., None])
 
     # --- Masque de remplacement : tout le fond, avec une marge douce autour du sujet ---
     margin = max(3, int(long_side * 0.008 * protect))
     grown = cv2.dilate((alpha > 0.03).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * margin + 1,) * 2))
     keep = gaussian(np.maximum(grown.astype(np.float32), alpha), margin * 0.8)
+    # Les taches isolées dans la marge sont quand même effacées.
+    keep = keep * (1.0 - stains)
     keep = np.maximum(keep, alpha)[..., None]
 
     out = img * keep + plate * (1.0 - keep)
